@@ -1,0 +1,578 @@
+-- Services
+local plr = game:GetService("Players").LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
+local MarketPlaceService = game:GetService("MarketplaceService")
+
+
+-- Events
+local itemEquipped = RS.Events.ItemEquipped
+local itemUnequipped = RS.Events.ItemUnequipped
+local ItemBought = RS.Events.ItemBought
+
+
+-- Player variables
+local character = plr.Character or plr.CharacterAdded:Wait()
+local coins = plr:WaitForChild("leaderstats").Coins
+local gems = plr:WaitForChild("leaderstats").Gems
+local ownedItems = plr:WaitForChild("OwnedItems")
+local equippedItems = plr.EquippedItems
+local equippedAuras = plr:WaitForChild("equippedAuras")
+local iconSlot = plr:WaitForChild("iconSlot")
+local abilitySlot = plr:WaitForChild("abilitySlot")
+local gearSlotsOwned = plr:WaitForChild("GearSlotsOwned")
+
+
+-- Other Variables
+local ScrollingFrame = script.Parent.ScrollingFrame
+local sounds = script.Parent.Parent.Sounds
+local itemsShowcase = ScrollingFrame.Parent.ItemshowcaseFrame
+local chromaButton = script.Parent.ItemshowcaseFrame.ChromaButton
+local notificationWindow = script.Parent.Parent.NotificationWindow
+local itemShopText = script.Parent.ShopType
+local howManyItemsEquiped
+local recentlyClickedItem
+local chromasWindow = script.Parent.ChromasWindow
+local recentlyClickedChroma
+local itemIsAura
+local itemIsIcon
+local itemIsGear
+local itemIsAbility
+local abilityCooldown
+
+
+-- Developer Product IDS
+local PremiumRewards = 792480699
+local StarterPackid = 791699674
+local purchaseIconSlotId = 1251122841
+local purchaseAuraSlotId = 794613348
+local purchaseVIPID = 42796743
+
+
+
+-- Function to sort images based on item price
+local function sortImagesByPrice(shownItems)
+
+	-- Create a table to store the image labels
+	local ImageButtons = {}
+
+	-- Iterate through the scrolling frame's children to find the image labels
+	for _, child in ipairs(ScrollingFrame:GetChildren()) do
+		if child:IsA("ImageButton") and string.match(child.Name, shownItems)then
+			-- Extract the price from the text label inside the image label
+			local price = child.Price.Value
+			if price then
+				-- Insert the image label and its price into the table
+				table.insert(ImageButtons, {ImageLabel = child, Price = price})
+			end
+		else
+			child.Visible = false
+		end
+	end
+
+	-- Sort the image labels based on their prices
+	table.sort(ImageButtons, function(a, b)
+		return a.Price < b.Price
+	end)
+
+	-- Initialize xScale and yScale
+	local xScale = 0.046
+	local yScale = 0.004
+
+	-- Reposition the image labels based on the sorted order
+	for i, data in ipairs(ImageButtons) do
+		-- Position the ImageLabel
+		data.ImageLabel.Visible = true
+		data.ImageLabel.Position = UDim2.new(xScale, 0, yScale, 0)
+
+		-- Update xScale and yScale for the next item
+		xScale = xScale + 0.180
+		if i % 5 == 0 then
+			xScale = 0.046
+			yScale = yScale + 0.018
+		end
+	end
+end
+
+
+function shopButtonClicked(Shop)
+	
+	itemsShowcase.PurchaseButton.Visible = false
+	
+	--Makes purchase button visible
+	
+	script.Parent.ItemshowcaseFrame.Purchase.Visible = true
+	
+	script.Parent.ItemshowcaseFrame.PurchaseFrame2.Visible = true
+	
+	script.Parent.ItemshowcaseFrame.PurchaseButton.Visible = true
+
+	script.Parent.ItemshowcaseFrame.PurchaseFrame.Visible = true
+	
+	--Makes the shown item on ItemShowCase non-visible
+	
+	for i,v in pairs(itemsShowcase:GetChildren()) do
+		if string.match(v.Name, "Purchase") then
+			v.Visible = true
+		else
+			v.Visible = false
+		end
+	end
+	
+	
+	--Use this later to make the right items visible in the shop.
+	local shownItems
+	
+	if Shop == "Icons" then
+		script.Parent.EquippedItemsFrame.Visible = false
+		script.Parent.EquippedAurasFrame.Visible = false
+		itemShopText.Text = "Icon Shop"
+		shownItems = "Icon"
+	elseif Shop == "Auras" then
+		script.Parent.EquippedItemsFrame.Visible = false
+		script.Parent.EquippedAurasFrame.Visible = true
+		itemShopText.Text = "Aura Shop"
+		shownItems = "Aura"
+	elseif Shop == "Gamepasses" then
+		script.Parent.EquippedItemsFrame.Visible = false
+		script.Parent.EquippedAurasFrame.Visible = false
+		itemShopText.Text = "Gamepasses"
+		shownItems = "Gamepasses"
+	elseif Shop == "Abilities" then
+		script.Parent.EquippedItemsFrame.Visible = false
+		script.Parent.EquippedAurasFrame.Visible = false
+		itemShopText.Text = "Abilities"
+		shownItems = "Ability"
+	else
+		script.Parent.EquippedItemsFrame.Visible = true
+		script.Parent.EquippedAurasFrame.Visible = false
+		itemShopText.Text = "Gear Shop"
+		shownItems = "Gear"
+	end
+
+	-- Call the function to sort the images
+	sortImagesByPrice(shownItems)
+end
+
+function itemClicked(itemName, itemType)
+	
+	sounds["click_sound2"]:Play()
+	
+	--Resets the clicked item and its item type
+	
+	itemIsAura = false
+
+	itemIsIcon = false
+	
+	itemIsAbility = false
+
+	itemIsGear = false
+	
+	recentlyClickedChroma = ""
+	
+	chromasWindow.Visible = false
+	
+	if itemType == "Icon" then
+		chromaButton.Visible = false
+		itemIsIcon = true
+	elseif itemType == "Gear" then
+		chromaButton.Visible = false
+		itemIsGear = true
+	elseif itemType == "Ability" then
+		chromaButton.Visible = false
+		itemIsAbility = true	
+	else
+		itemIsAura = true
+	end
+	
+	recentlyClickedItem = itemName
+	
+	--Makes the right item visible in the showcaseframe
+
+	for i,v in pairs(itemsShowcase:GetChildren()) do
+		if v.Name == itemName then
+			v.Visible = true
+		elseif string.match(v.Name,"Purchase") then
+			v.Visible = true
+		else
+			v.Visible = false
+		end
+	end
+	
+	--Checks if the the clicked item is owned or equipped and changes purchase text based on it
+	
+	local itemNameOwned = recentlyClickedItem .. "Owned"
+	
+	if itemType == "Aura" then
+		for _, v in pairs(RS.Auras:GetChildren()) do
+			if v.Name == itemName .. "Chromas" then
+				chromaButton.Visible = true
+				for _, chromaWindowButton in ipairs(chromasWindow:GetChildren()) do
+					if chromaWindowButton.Name ~= "ResetChroma" then
+						chromaWindowButton.CheckMark.Visible = false
+					end
+				end
+			end
+		end
+	end
+	
+	
+	if itemName == "ConfettiGun" or itemName == "Crown" or itemName == "WaterfallCape" then
+		itemsShowcase.Purchase.Text = "Buy Now"
+		itemsShowcase.PurchaseFrame.ImageColor3 = Color3.fromRGB(0, 255, 42)
+		itemsShowcase.PurchaseFrame2.ImageColor3 = Color3.fromRGB(24, 161, 0)
+		itemsShowcase.PurchaseButton.Visible = true
+	elseif itemName == "ToolRain" then
+		itemsShowcase.PurchaseFrame.ImageColor3 = Color3.fromRGB(255, 209, 25)
+		itemsShowcase.PurchaseFrame2.ImageColor3 = Color3.fromRGB(99, 81, 9)
+		itemsShowcase.Purchase.Text = "Level 15 Required"
+		itemsShowcase.PurchaseButton.Visible = true
+	elseif itemName == "SunnySmile" then
+		itemsShowcase.PurchaseFrame.ImageColor3 = Color3.fromRGB(255, 209, 25)
+		itemsShowcase.PurchaseFrame2.ImageColor3 = Color3.fromRGB(99, 81, 9)
+		itemsShowcase.Purchase.Text = "Level 25 Required"
+		itemsShowcase.PurchaseButton.Visible = true
+	else
+		itemsShowcase.PurchaseFrame.ImageColor3 = Color3.fromRGB(255, 209, 25)
+		itemsShowcase.PurchaseFrame2.ImageColor3 = Color3.fromRGB(99, 81, 9)
+		itemsShowcase.Purchase.Text = "Purchase"
+		itemsShowcase.PurchaseButton.Visible = true
+	end
+
+	for i,v in pairs(ownedItems:getChildren()) do
+		if v.Name == itemNameOwned then
+			if itemIsGear == true then
+				for _, e in pairs(equippedItems:GetChildren()) do
+					if e.Value .. "Owned" == v.Name then
+						itemsShowcase.Purchase.Text = "Unequip"
+						return
+					end
+				end
+			elseif itemIsAura == true then
+				for _, e in pairs(equippedAuras:GetChildren()) do
+					if e.Value .. "Owned" == v.Name then
+						itemsShowcase.Purchase.Text = "Unequip"
+						return
+					end
+				end
+			elseif itemIsIcon == true then
+				--print(plr:WaitForChild("iconSlot").Value, v.Name)
+				if plr:WaitForChild("iconSlot").Value .. "Owned" == v.Name then
+					itemsShowcase.Purchase.Text = "Unequip"
+					return
+				end
+			elseif itemIsAbility == true then
+				--print(plr:WaitForChild("abilitySlot").Value, v.Name)
+				if plr:WaitForChild("abilitySlot").Value .. "Owned" == v.Name then
+					itemsShowcase.Purchase.Text = "Unequip"
+					return
+				end	
+			end
+			if v.Value == true then
+				itemsShowcase.Purchase.Text = "Equip"
+				return
+			end
+		end
+	end
+end
+
+
+--Changes UI colors based on whether item is owned or equipped
+local function CheckOwnedItems()
+	for _, itemButton in pairs(ScrollingFrame:GetChildren()) do
+		if tostring(iconSlot.Value) == itemButton.Name:sub(6, #itemButton.Name) and itemButton.Name:sub(6, #itemButton.Name) ~= "" then
+			itemButton.BackgroundColor3 = Color3.fromRGB(50, 184, 61)
+			itemButton.BorderColor3 = Color3.new(255, 255, 255)
+			itemButton.BorderSizePixel = 2
+		elseif tostring(abilitySlot.Value) == itemButton.Name:sub(9, #itemButton.Name) and itemButton.Name:sub(9, #itemButton.Name) ~= "" then
+			itemButton.BackgroundColor3 = Color3.fromRGB(50, 184, 61)
+			itemButton.BorderColor3 = Color3.new(255, 255, 255)
+			itemButton.BorderSizePixel = 2
+		else	
+			for i, item in pairs(ownedItems:GetChildren()) do
+				if item.Value == true and string.gsub(item.Name, "Owned", "") == itemButton.Name:sub(6, #itemButton.Name) or 
+					item.Value == true and string.gsub(item.Name, "Owned", "") == itemButton.Name:sub(9, #itemButton.Name)
+				then
+					itemButton.BackgroundColor3 = Color3.fromRGB(39, 111, 23)
+					itemButton.BorderColor3 = Color3.new(0, 0, 0)
+					itemButton.BorderSizePixel = 1
+					break
+				end
+			end
+		end
+	end
+end
+
+
+local CheckIsItemPurchasable = RS.RemoteFunctions.CheckIsItemPurchasable
+
+itemsShowcase.PurchaseButton.MouseButton1Down:Connect(function()
+	
+	--Checks whether the player wants to buy, equip or unequip the item (and its type)
+	
+	local putNotificationWindowVisible = true
+	
+	if itemsShowcase.Purchase.Text == "Equip" then
+		
+		if itemIsGear then
+			for i, item in pairs(plr.EquippedItems:GetChildren()) do
+				if item.Value == "" then 			
+					putNotificationWindowVisible = false
+					break
+				end
+			end
+			if putNotificationWindowVisible == true then
+				notificationWindow.ItemSlotsFull.Visible = true
+				sounds["Windows error"]:Play()
+			else
+				sounds["Pickup/Equip Item"]:Play()
+				itemEquipped:FireServer(recentlyClickedItem, itemIsAura, itemIsIcon, itemIsGear, itemIsAbility)
+				itemsShowcase.Purchase.Text = "Unequip"
+			end
+			
+		elseif itemIsAura then
+			
+			for i, item in pairs(plr.equippedAuras:GetChildren()) do
+				if item.Value == "" then 			
+					putNotificationWindowVisible = false
+					break
+				end
+			end
+			
+			
+			if putNotificationWindowVisible == true then
+				notificationWindow.AuraSlotsFull.Visible = true
+				sounds["Windows error"]:Play()
+			else
+				sounds["Pickup/Equip Item"]:Play()
+				itemEquipped:FireServer(recentlyClickedItem, itemIsAura, itemIsIcon, itemIsGear, itemIsAbility, 0, recentlyClickedChroma)
+				itemsShowcase.Purchase.Text = "Unequip"
+			end
+		else
+			--Defines abilitycooldown value
+			if itemIsAbility then
+				for i,v in pairs(itemsShowcase:GetChildren()) do
+					if v.Name == recentlyClickedItem then
+						abilityCooldown = v:FindFirstChild("Cooldown").Text:gsub("s", "")
+					end
+				end
+			end
+			
+			sounds["Pickup/Equip Item"]:Play()
+			itemEquipped:FireServer(recentlyClickedItem, itemIsAura, itemIsIcon, itemIsGear, itemIsAbility, abilityCooldown)
+			itemsShowcase.Purchase.Text = "Unequip"
+		end
+		
+	elseif itemsShowcase.Purchase.Text == "Unequip" then
+		itemUnequipped:FireServer(recentlyClickedItem, itemIsAura, itemIsIcon, itemIsGear, itemIsAbility)
+		itemsShowcase.Purchase.Text = "Equip"
+		
+	elseif CheckIsItemPurchasable:InvokeServer(recentlyClickedItem, itemIsAura, itemIsIcon, itemIsGear, itemIsAbility) then
+		sounds["cash register"]:Play()
+		itemsShowcase.Purchase.Text = "Equip"
+		ItemBought:FireServer(recentlyClickedItem, itemIsAura, itemIsIcon, itemIsGear, itemIsAbility)
+		
+	elseif itemsShowcase.Purchase.Text == "Buy Now" and recentlyClickedItem == "ConfettiGun" then
+		local success, message = pcall(function()
+			hasPass = MarketPlaceService:UserOwnsGamePassAsync(plr.Userid, StarterPackid)
+		end)
+		if hasPass then
+			print("player owns Starter pack pass")
+		else
+			MarketPlaceService:PromptGamePassPurchase(plr, StarterPackid)
+		end
+		
+	elseif itemsShowcase.Purchase.Text == "Buy Now" and recentlyClickedItem == "Crown" then
+		local success, message = pcall(function()
+			hasPass = MarketPlaceService:UserOwnsGamePassAsync(plr.Userid, purchaseVIPID)
+		end)
+		if hasPass then
+			print("player owns VIP pass")
+		else
+			MarketPlaceService:PromptGamePassPurchase(plr, purchaseVIPID)
+		end
+		
+	elseif itemsShowcase.Purchase.Text == "Buy Now" and recentlyClickedItem == "WaterfallCape" then
+		local success, message = pcall(function()
+			hasPass = MarketPlaceService:UserOwnsGamePassAsync(plr.Userid, PremiumRewards)
+		end)
+		if hasPass then
+			print("player owns Gold Rewards pass")
+		else
+			MarketPlaceService:PromptGamePassPurchase(plr, PremiumRewards)
+		end
+	
+	else
+		if itemIsAura or itemIsAbility then
+			itemsShowcase.Purchase.Text = "Not Enough Gems!"
+		else
+			itemsShowcase.Purchase.Text = "Not Enough Coins"
+		end
+		
+		wait(1)
+		
+		itemsShowcase.Purchase.Text = "Purchase"
+	end
+	
+	wait(0.1)
+	
+	CheckOwnedItems()
+end)
+
+
+
+
+
+-- Function to connect buttons to itemClicked function based on their name
+local function connectButtons(frame)
+	for _, button in ipairs(frame:GetChildren()) do
+			local itemName, categoryPrefix
+
+			-- Check for category in the button's name
+			if button.Name:match("^Gear_") then
+				itemName = button.Name:gsub("^Gear_", "")
+				categoryPrefix = "Gear"
+			elseif button.Name:match("^Aura_") then
+				itemName = button.Name:gsub("^Aura_", "")
+				categoryPrefix = "Aura"
+			elseif button.Name:match("^Icon_") then
+				itemName = button.Name:gsub("^Icon_", "")
+				categoryPrefix = "Icon"
+			elseif button.Name:match("^Ability_") then
+				itemName = button.Name:gsub("^Ability_", "")
+				categoryPrefix = "Ability"
+			end
+
+			-- If a valid category is found, connect the function
+			if categoryPrefix then
+				button.MouseButton1Down:Connect(function()
+					itemClicked(itemName, categoryPrefix)
+				end)
+			end
+	end
+end
+
+-- Images for the aura chromas
+local chromaImages = {
+	BlackAndWhiteDanceFloor = "rbxassetid://18103790012",
+	EmeraldDanceFloor = "rbxassetid://18103806909",
+	RoseQuartzDanceFloor = "rbxassetid://18103802471",
+	OrangeAndTurquoiseDanceFloor = "rbxassetid://18103799758",
+	SkyBlueAndDarkOrangeDanceFloor = "rbxassetid://18103805048",
+	RedAndGreenDanceFloor = "rbxassetid://18103795542",
+	CatseyeCandlelit = "rbxassetid://18122096129",
+	PearlCandlelit = "rbxassetid://18122093970",
+	PrismCandlelit = "rbxassetid://18122097911",
+	RubyCandlelit = "rbxassetid://18122088585",
+	SapphireCandlelit = "rbxassetid://18122091261",
+	EmeraldCandlelit = "rbxassetid://18122101343"
+}
+
+chromaButton.MouseButton1Click:Connect(function()
+	
+	if chromasWindow.Visible == true then
+		chromasWindow.Visible = false
+	else
+		chromasWindow.Visible = true
+	end
+	
+	local chromaUI = chromasWindow:GetChildren()
+	for index, chroma in ipairs(RS.Auras[recentlyClickedItem .. "Chromas"]:GetChildren()) do
+		if chromaUI[index].Name ~= "ResetChroma" then
+			if ownedItems[chroma.Name .. "Owned"].Value == true then
+				chromaUI[index].Name = chroma.Name
+				chromaUI[index].NotOwnedBackGround.Visible = false
+				chromaUI[index].Interactable = true
+			else
+				chromaUI[index].Name = chroma.Name
+				chromaUI[index].NotOwnedBackGround.Visible = true
+				chromaUI[index].Interactable = false
+			end
+			chromaUI[index].Image = chromaImages[chroma.Name]
+		end
+	end
+end)
+
+
+local changeAuraChromaEvent = RS.Events.ChangeAuraChroma
+
+for _, chromaWindowButton in ipairs(chromasWindow:GetChildren()) do
+	chromaWindowButton.MouseButton1Click:Connect(function()
+		if chromaWindowButton.Name ~= "ResetChroma" then
+			if ownedItems[recentlyClickedItem .. "Owned"].Value then
+				for _, otherButton in ipairs(chromasWindow:GetChildren()) do
+					if otherButton.Name ~= "ResetChroma" then
+						otherButton.CheckMark.Visible = false
+					end
+				end
+				chromaWindowButton.CheckMark.Visible = true
+			end
+			recentlyClickedChroma = chromaWindowButton.Name
+		else
+			for _, otherButton in ipairs(chromasWindow:GetChildren()) do
+				if otherButton.Name ~= "ResetChroma" then
+					otherButton.CheckMark.Visible = false
+				end
+			end
+		end
+	end)
+end
+
+chromasWindow.ResetChroma.MouseButton1Click:Connect(function()
+	recentlyClickedChroma = ""
+end)
+
+-- Connect buttons in ScrollingFrame
+connectButtons(ScrollingFrame)
+
+-- Connect buttons in EquippedItemsFrame
+connectButtons(script.Parent.EquippedItemsFrame.ButtonFolder)
+
+-- Connect buttons in EquippedAurasFrame
+connectButtons(script.Parent.EquippedAurasFrame.ButtonFolder)
+
+plr.OwnedItems.CrownOwned.Changed:Connect(function()
+	CheckOwnedItems()
+end)
+
+plr.OwnedItems.ConfettiGunOwned.Changed:Connect(function()
+	CheckOwnedItems()
+end)
+
+script.Parent.Icons.MouseButton1Down:Connect(function()
+	shopButtonClicked("Icons")
+end)
+
+script.Parent.Aura.MouseButton1Down:Connect(function()
+	shopButtonClicked("Auras")
+end)
+
+script.Parent.Gear.MouseButton1Down:Connect(function()
+	shopButtonClicked("Gear")
+end)
+
+script.Parent.Abilities.MouseButton1Down:Connect(function()
+	shopButtonClicked("Abilities")
+end)
+
+script.Parent.EquippedItemsFrame.ScrollingFrame.Buy_Gear_Slot.MouseButton1Down:Connect(function()
+	MarketPlaceService:PromptProductPurchase(plr, purchaseIconSlotId)
+end)
+
+script.Parent.EquippedAurasFrame.ScrollingFrame.Buy_Aura_Slot.MouseButton1Down:Connect(function()
+	MarketPlaceService:PromptProductPurchase(plr, purchaseAuraSlotId)
+end)
+
+
+task.wait(4)
+
+--Defines ability cooldown when player rejoins the game.
+for i,v in pairs(itemsShowcase:GetChildren()) do
+	if v.Name == plr.abilitySlot.Value then
+		abilityCooldown = v:FindFirstChild("Cooldown").Text:gsub("s", "")
+		itemEquipped:FireServer(plr.abilitySlot.Value, false, false, false, true, abilityCooldown)
+	end
+end
+
+CheckOwnedItems()
+
+sortImagesByPrice("Gear")

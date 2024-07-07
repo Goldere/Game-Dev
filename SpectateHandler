@@ -1,0 +1,96 @@
+local RS = game:GetService("ReplicatedStorage")
+local teleportPlayerToArenaInBowling = RS.Events.AddPlayersToSpectate
+
+-- Player Variables
+local localPlayer = game.Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Other Variables
+local playerGui = localPlayer.PlayerGui.MainGui
+local spectateMain = playerGui.SpectateMain
+local spectateBtn = playerGui.SpectateButton.SpectateButton
+local cam = workspace.CurrentCamera
+local cameraClickSound = playerGui.Sounds["Camera Click"]
+local currentlySpectating = 1
+local plrs = {}
+
+for i, plr in pairs(game.Players:GetPlayers()) do
+	if plr ~= game.Players.LocalPlayer then 
+		table.insert(plrs, plr) 
+	end
+end
+
+teleportPlayerToArenaInBowling.OnClientEvent:Connect(function()
+	plrs = {}
+	for i, plr in pairs(game.Players:GetPlayers()) do
+		if plr ~= game.Players.LocalPlayer then 
+			table.insert(plrs, plr) 
+		end
+	end
+end)
+
+game.Players.PlayerAdded:Connect(function(plr)
+	table.insert(plrs, plr)
+end)
+
+game.Players.PlayerRemoving:Connect(function(plr)
+	table.remove(plrs, plrs[plr])
+end)
+
+
+spectateBtn.MouseButton1Click:Connect(function()
+	cameraClickSound:Play()
+	if #plrs < 1 then playerGui.Level.Visible = true return end
+	spectateMain.Visible = not spectateMain.Visible
+	playerGui.Level.Visible = false
+
+end)
+
+spectateMain.LeftButton.MouseButton1Click:Connect(function()
+	cameraClickSound:Play()
+	if currentlySpectating > 1 then 
+		currentlySpectating = currentlySpectating - 1
+	else
+		currentlySpectating = #plrs
+	end
+end)
+
+
+spectateMain.RightButton.MouseButton1Click:Connect(function()
+	cameraClickSound:Play()
+	if currentlySpectating < #plrs then 
+		currentlySpectating = currentlySpectating + 1
+	else
+		currentlySpectating = 1
+	end
+end)
+
+game:GetService("RunService").RenderStepped:Connect(function()
+
+	if #plrs < 1 then spectateMain.Visible = false end
+
+	if spectateMain.Visible == true then
+
+		local playerSpectating = plrs[currentlySpectating]
+		if not playerSpectating then playerSpectating = plrs[1] end
+
+		local char = playerSpectating.Character
+
+		if char and char:FindFirstChild("HumanoidRootPart") then 
+			cam.CameraSubject = char.Humanoid
+		end
+
+		spectateMain.PlayerName.Text = playerSpectating.Name
+	else
+		cam.CameraSubject = humanoid
+	end
+end)
+
+while wait(.1) do
+	for i, v in pairs(plrs) do
+		if v.Alive.Value == false then
+			table.remove(plrs, i)
+		end
+	end
+end

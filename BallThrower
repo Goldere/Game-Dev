@@ -1,0 +1,367 @@
+-- Player information and GUI
+local p = game.Players.LocalPlayer
+local playerGui = p.PlayerGui.MainGui
+local charged_ball_cooldown_animation = playerGui.Stats.charged_ball_cooldown_animation
+local char = p.Character or p.CharacterAdded:wait()
+
+-- Player stats
+local playerStats = p:FindFirstChild("PlayerStats")
+local ball_damage = playerStats:WaitForChild("ball_damage")
+local ball_cooldown = playerStats:WaitForChild("ball_fire_rate")
+local ball_size = playerStats:WaitForChild("ball_size")
+local ball_speed = playerStats:WaitForChild("ball_speed")
+local ball_knockpack = playerStats:WaitForChild("ball_knockpack")
+local ball_stun_duration = playerStats:WaitForChild("ball_stun_duration") 
+local ball_charge_on_cooldown = playerStats:WaitForChild("charged_ball_on_cooldown")
+local ball_charge_cooldown = playerStats:WaitForChild("charged_ball_cooldown")
+
+-- Ball
+local RS = game:GetService("ReplicatedStorage") 
+local RsBowlingBall = RS.BowlingBall
+local ball_charged_event = script.Parent.ThrowBall
+local Throw = script.Parent.Throw
+local tool = script.Parent
+local tool_equipped
+local hugeball = playerStats.hugeBall
+local bowlingBallHitSound = RS.Events.PlayBowlingBallHitSound
+local shine_sound_effect = tool.Handle.shine
+local shine_effects = tool.Handle.Attachment
+
+-- Player body and physics
+local ragdolled = char.RagdollTrigger
+local human = char:WaitForChild("Humanoid")
+local humRootPart = char:FindFirstChild("HumanoidRootPart")
+
+-- Animations
+local Animation = script.Parent:WaitForChild("HoldAnimation")
+local HoldAnimation = human:LoadAnimation(Animation)
+HoldAnimation.Looped = false
+local ChargedHoldAnimation = human:LoadAnimation(script.Parent.ChargeHoldAnimation)
+local ThrowAnimation = human:LoadAnimation(Throw)
+local ChargedBallThrow = human:LoadAnimation(script.Parent.ChargedBallThrow)
+local ChargeAnimation = human:LoadAnimation(script.Parent.ChargeAnimation) 
+
+
+-- Camera and animations
+local camera = workspace.CurrentCamera
+local TweenService = game:GetService("TweenService")
+local debris = game:GetService("Debris")
+local cam = workspace.CurrentCamera
+local cameraShaker = require(game.ReplicatedStorage.CameraShaker)
+local shaking = false
+
+
+-- Other variables
+local canFire = false  -- Indicator if the ball can be thrown
+local HOLD_TIME_LIMIT = 90 
+local mouse = p:GetMouse()
+local tapPosition
+local db = false
+local angle
+local remote = RS.Events.BallSpawned
+local KnockpackEvent = RS.Events.BallKnockpack
+local uis = game:GetService("UserInputService")
+local mDown = false
+
+-- Target Filtering
+local lawnMowerEscapeArena = game.Workspace:FindFirstChild("Lawn Mower Escape")
+local tileSmasherArena = game.Workspace:FindFirstChild("Tile Smasher Arena")
+local bombDodgeFrenzyArena = game.Workspace:FindFirstChild("Bomb Dodge Frenzy")
+local iceLakeArena = game.Workspace:FindFirstChild("Ice Lake")
+
+
+if tileSmasherArena then
+	mouse.TargetFilter = tileSmasherArena.InvisibleWalls
+elseif lawnMowerEscapeArena then
+	mouse.TargetFilter = lawnMowerEscapeArena.LawnMowerEscapeWalls
+elseif bombDodgeFrenzyArena then
+	mouse.TargetFilter = bombDodgeFrenzyArena.Bombs
+elseif iceLakeArena then
+	mouse.TargetFilter = iceLakeArena.SnowParticles	
+end
+
+
+--UI Variables
+local EnemyHitNotification = p.PlayerGui.MainGui.EnemyHitNotification
+local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false)
+local goal = {Position = UDim2.new(0.407, 0,0.756, 0)}
+EnemyHitNotification.Position = UDim2.new(0.55, 0,0.756, 0) 
+local enemyHitTween = TweenService:Create(EnemyHitNotification, tweenInfo, goal)
+
+
+local ball_attack_charged_bool = char:WaitForChild("ballAttackCharged")
+
+local camShake = cameraShaker.new(Enum.RenderPriority.Camera.Value, function(shakeCf)
+	cam.CFrame = cam.CFrame * shakeCf
+end)
+
+local function CreateAngle()
+	angle = Instance.new("Part")
+	angle.TopSurface = "Smooth"
+	angle.BottomSurface = "Smooth"
+	angle.Anchored = true
+	angle.Size = Vector3.new(.1,.1,.1)
+	angle.Material = Enum.Material.SmoothPlastic
+	angle.Parent = game.Workspace
+	angle.CanCollide = false
+	angle.BrickColor = BrickColor.Red()
+	angle.Transparency = .4
+end
+
+
+local tween = game.TweenService:Create(camera, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {FieldOfView = 70})
+local properties = {
+	Size = UDim2.new(0.942, 0,0.112, 0), -- Set the width and height of the UI element
+}
+local tweenInfo = TweenInfo.new(
+	2.87, -- Duration (in seconds)
+	Enum.EasingStyle.Linear, -- Easing style
+	Enum.EasingDirection.InOut, -- Easing direction
+	0, -- Number of times to repeat (-1 means infinite)
+	false, -- Whether to reverse the tween when it completes
+	0 -- Delay before the tween starts (in seconds)
+)
+
+
+local ball_charge_tween = game.TweenService:Create(charged_ball_cooldown_animation, tweenInfo, properties)
+charged_ball_cooldown_animation.Size = UDim2.new(0, 0, 0.112, 0)
+
+
+ball_charge_on_cooldown.Changed:Connect(function()
+
+	if ball_charge_on_cooldown.Value then
+		local cooldown_left = ball_charge_cooldown.Value
+
+		p.PlayerGui.MainGui.Stats.charged_ball_cooldown_ui.Visible = true
+
+		while cooldown_left > 0.1 do
+			cooldown_left -= 0.1
+			p.PlayerGui.MainGui.Stats.charged_ball_cooldown_text.Text = string.format("%.1f", cooldown_left)
+			wait(0.1)
+		end
+		p.PlayerGui.MainGui.Stats.charged_ball_cooldown_ui.Visible = false
+		p.PlayerGui.MainGui.Stats.charged_ball_cooldown_text.Text = ""
+	end
+end)
+
+
+
+local function ThrowBall()
+
+	if not uis.TouchEnabled then
+		CreateAngle()
+	end
+
+	--if ragdolled.Value == false then
+	while canFire == false do
+		wait()
+	end
+
+	local added_speed = 0
+	local a = 0
+	local hold_time = 0
+	local attack_charged = false
+	local ball_charging = false
+
+	while mDown do
+		if ball_charge_on_cooldown.Value == false then
+			hold_time += 1
+
+			if hold_time > 5 and hold_time < HOLD_TIME_LIMIT then
+
+				attack_charged = true
+
+				if not ball_charging then
+					camShake:Shake(cameraShaker.Presets.Vibration)
+					camShake:Start()
+					ChargeAnimation:Play()
+					tool.Handle["Charge sound"]:Play()
+					ball_charged_event:FireServer(true)
+					ball_charge_tween:Play()
+					ball_charging = true
+				end
+
+				camera.FieldOfView -= 0.1
+				added_speed += 1
+			end
+
+
+			if hold_time == HOLD_TIME_LIMIT then 
+				ChargeAnimation:Stop()
+				ChargedHoldAnimation:Play()
+				ball_charged_event:FireServer(true, true)
+
+			end
+
+		end
+		wait()
+	end
+
+	tool.Handle["Charge sound"]:Stop()
+
+	ChargedHoldAnimation:Stop()
+
+	ChargeAnimation:Stop()
+
+	camShake:Stop()
+
+	ball_charge_tween:Cancel()
+
+	charged_ball_cooldown_animation.Size = UDim2.new(0, 0, 0.112, 0)
+
+	if not uis.TouchEnabled then
+		angle:Destroy()
+	end
+
+
+	local vector = 0
+	if not uis.TouchEnabled then
+		local vector = angle.CFrame.lookVector.unit
+	end
+
+	if hold_time >= 90 then
+		ball_charged_event:FireServer(false, true, ball_charging)
+		ChargedBallThrow:Play()
+		task.wait(0.2)
+	else
+		ball_charged_event:FireServer(false, false, ball_charging)
+		ThrowAnimation:Play()
+		tool.Handle.Woosh:Play()
+	end
+
+	if not ragdolled.Value then
+		if not uis.TouchEnabled then
+			remote:FireServer(vector,script.Parent, mouse.Hit.p, ball_damage.Value, ball_size.Value, ball_speed.Value + added_speed,
+				hugeball.Value, ball_knockpack.Value + (added_speed / 2), nil, false, humRootPart.Position, attack_charged)
+		else
+			remote:FireServer(vector,script.Parent, tapPosition, ball_damage.Value, ball_size.Value, ball_speed.Value + added_speed,
+				hugeball.Value, ball_knockpack.Value + (added_speed / 2), nil, false, humRootPart.Position, attack_charged)
+		end
+	end
+
+	tween:Play()
+	wait(ball_cooldown.Value)
+	db = false
+end
+
+local LENGTH = 500
+uis.TouchTapInWorld:Connect(function(position, processedByUI)
+	-- Do not create a part if the player clicked on a GUI/UI element
+	if processedByUI then
+		return
+	end
+
+	-- Get Vector3 world position from the Vector2 viewport position
+	local unitRay = camera:ViewportPointToRay(position.X, position.Y)
+	local ray = Ray.new(unitRay.Origin, unitRay.Direction * LENGTH)
+	local hitPart, worldPosition = workspace:FindPartOnRay(ray)
+	
+	tapPosition = worldPosition
+end)
+
+local sound1 = game.Workspace.Sounds.BowlingBallHitSound2
+local sound2 = game.Workspace.Sounds.BowlingBallHitSound
+bowlingBallHitSound.OnClientEvent:Connect(function()
+	local random_number = math.random(1,2)
+	local sound = (random_number == 1 and sound1) or sound2
+	sound.Volume = 0.4
+	sound:Play()
+end)
+
+uis.InputBegan:connect(function(input,g)
+	if not g and input.UserInputType == Enum.UserInputType.MouseButton1 and tool_equipped == true then
+		canFire = true
+		mDown = true
+		task.wait(1)
+	end
+end)
+
+uis.InputEnded:connect(function(input,g)
+	if not g and (input.UserInputType == Enum.UserInputType.MouseButton1 
+		or input.UserInputType == Enum.UserInputType.Touch) and tool_equipped == true then
+		if uis.TouchEnabled then
+			canFire = true
+			mDown = false
+			task.wait(0.05)
+			canFire = false
+		else
+			canFire = false
+			mDown = false
+			task.wait(1)
+		end
+	end
+end)
+
+
+playerGui.Stats.ChargeButton.MouseButton1Click:Connect(function()
+	if tool_equipped == true then
+		mDown = true
+		canFire = true
+		task.wait(0.1)
+		canFire = false
+	end
+end)
+
+
+tool.Equipped:Connect(function()
+	HoldAnimation:Play()
+	tool_equipped = true
+
+	while tool_equipped == true do
+		if not db then
+			db = true
+			ThrowBall()
+		end
+		wait()
+	end
+end)
+
+tool.Unequipped:Connect(function()
+	HoldAnimation:Stop()
+	tool_equipped = false
+	if not uis.TouchEnabled then
+		angle:Destroy()
+	end
+end)
+
+
+if human.RigType == Enum.HumanoidRigType.R6 then
+	leg = char:WaitForChild("Right Arm")
+else
+	leg = char:WaitForChild("Right Upper Arm")
+end
+
+char.DescendantRemoving:Connect(function(removedInstance)
+	if removedInstance.Name == tool.Name then
+		HoldAnimation:Stop()
+		if not uis.TouchEnabled then
+			angle:Destroy()
+		end
+	end
+end)
+
+
+game["Run Service"].RenderStepped:connect(function()
+	if angle then
+		local offset = (leg.CFrame * Vector3.new(0,-.5,0)) - mouse.Hit.p
+		local size = offset.Magnitude
+		if size > 512 then
+			size = 512
+		end
+		angle.Size = Vector3.new(angle.Size.X,angle.Size.Y,size)
+		angle.CFrame = CFrame.new((leg.CFrame * CFrame.new(0,-.5,0)).p,Vector3.new(mouse.hit.p.X, mouse.hit.p.Y,mouse.hit.p.Z)) * CFrame.new(0,0,-size/2)
+	end
+end)
+
+
+ball_size.Changed:Connect(function()
+	script.Parent.BallSizeChanged:FireServer()
+end)
+
+human.Died:Connect(function()
+	if not uis.TouchEnabled then
+		angle:Destroy()
+	end
+end)
+
+script.Parent.BallSizeChanged:FireServer()

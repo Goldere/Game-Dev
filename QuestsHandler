@@ -1,0 +1,163 @@
+local plr = game:GetService("Players").LocalPlayer
+local character = plr.Character or plr.CharacterAdded:Wait()
+
+-- Events
+local questClaimed = game.ReplicatedStorage.Events.QuestClaimed
+local addTimeToQuests = game.ReplicatedStorage.Events.AddQuestTime
+
+-- Variables
+local timeToResetWeeklyRewards = plr.Quests.TimeToResetWeeklyRewards
+local timeToResetDailyRewards = plr.Quests.TimeToResetDailyRewards
+
+
+local questData = {
+	{
+		dailyButton = script.Parent.FirstDailyQuest.FirstWeeklyRewardButton,
+		dailyStat = plr:WaitForChild("Quests").DailyGamesPlayed,
+		dailyQuest = plr:WaitForChild("Quests").DailyQuest1,
+		maxStat = 10,
+		rewardBarSizeMultiplier = 0.094,
+		progressTextPrefix = "",
+		questName = "First Daily Quest"
+	},
+	{
+		dailyButton = script.Parent.SecondDailyQuest.FirstWeeklyRewardButton,
+		dailyStat = plr:WaitForChild("Quests").DailyWins,
+		dailyQuest = plr:WaitForChild("Quests").DailyQuest2,
+		maxStat = 3,
+		rewardBarSizeMultiplier = 0.31333,
+		progressTextPrefix = "",
+		questName = "Second Daily Quest"
+	},
+	{
+		dailyButton = script.Parent.ThirdDailyQuest.FirstWeeklyRewardButton,
+		dailyStat = plr:WaitForChild("Quests").DailyBallsThrowed,
+		dailyQuest = plr:WaitForChild("Quests").DailyQuest3,
+		maxStat = 250,
+		rewardBarSizeMultiplier = 0.00376,
+		progressTextPrefix = " ",
+		questName = "Third Daily Quest"
+	},
+	{
+		dailyButton = script.Parent.FirstWeeklyReward.FirstWeeklyRewardButton,
+		dailyStat = plr:WaitForChild("Quests").WeeklyGamesPlayed,
+		dailyQuest = plr:WaitForChild("Quests").WeeklyQuest1,
+		maxStat = 50,
+		rewardBarSizeMultiplier = 0.0188,
+		progressTextPrefix = " ",
+		questName = "First Weekly Quest"
+	},
+	{
+		dailyButton = script.Parent.SecondWeeklyReward.FirstWeeklyRewardButton,
+		dailyStat = plr:WaitForChild("Quests").WeeklyWins,
+		dailyQuest = plr:WaitForChild("Quests").WeeklyQuest2,
+		maxStat = 15,
+		rewardBarSizeMultiplier = 0.0626666666666667,
+		progressTextPrefix = " ",
+		questName = "Second Weekly Quest"
+	},
+	{
+		dailyButton = script.Parent.ThirdWeeklyReward.FirstWeeklyRewardButton,
+		dailyStat = plr:WaitForChild("Quests").WeeklyBallsThrowed,
+		dailyQuest = plr:WaitForChild("Quests").WeeklyQuest3,
+		maxStat = 1250,
+		rewardBarSizeMultiplier = 0.003,
+		progressTextPrefix = " ",
+		questName = "Third Weekly Quest"
+	}
+}
+
+-- Updates the UI to show the current progress of the quest
+local function updateUI(quest)
+	local statValue = quest.dailyStat.Value
+	local completed = statValue >= quest.maxStat
+	local questCompleted = quest.dailyQuest.Value
+	
+	if quest.questName == "Third Weekly Quest" then
+		if statValue % 4 == 0 then
+			quest.dailyButton.Parent.RewardBarAnimation.Size = UDim2.new(quest.rewardBarSizeMultiplier * (statValue / 4), 0, 0.232, 0)
+		end
+	else
+		quest.dailyButton.Parent.RewardBarAnimation.Size = UDim2.new(quest.rewardBarSizeMultiplier * statValue, 0, 0.232, 0)
+	end
+	quest.dailyButton.Parent.ProgressText.Text = quest.progressTextPrefix .. tostring(statValue) .. " / " .. quest.maxStat
+
+	if completed then
+		if questCompleted then
+			quest.dailyButton.ClaimText.Text = "Claimed"
+			quest.dailyButton.UIGradient.Enabled = false
+			quest.dailyButton.BackgroundColor3 = Color3.fromRGB(91, 10, 39)
+		else
+			quest.dailyButton.UIGradient.Enabled = true
+			quest.dailyButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		end
+	else
+		quest.dailyButton.ClaimText.Text = "Claim"
+		quest.dailyButton.UIGradient.Enabled = false
+		quest.dailyButton.BackgroundColor3 = Color3.fromRGB(91, 10, 39)
+	end
+end
+
+-- Connect the function to the Changed event of each dailyStat
+for _, quest in pairs(questData) do
+	quest.dailyStat.Changed:Connect(function()
+		updateUI(quest)
+	end)
+
+	local debounce = false
+	quest.dailyButton.MouseButton1Click:Connect(function()
+		if quest.dailyStat.Value >= quest.maxStat and not quest.dailyQuest.Value and not debounce then
+			debounce = true
+			quest.dailyButton.ClaimText.Text = "Claimed"
+			quest.dailyButton.UIGradient.Enabled = false
+			quest.dailyButton.BackgroundColor3 = Color3.fromRGB(91, 10, 39)
+			questClaimed:FireServer(quest.questName)
+			task.wait(1)
+			debounce = false
+		end
+	end)
+end
+
+
+
+function formatTime(seconds)
+	local days = math.floor(seconds / 86400)
+	seconds = seconds % 86400
+	local hours = math.floor(seconds / 3600)
+	seconds = seconds % 3600
+	local minutes = math.floor(seconds / 60)
+
+	local formattedTime = string.format("%dd, %dh, %dm", days, hours, minutes)
+	return formattedTime
+end
+
+-- Update the UI with the formatted time
+-- If the time is less than 0, it means the timer has passed and the rewards should be reset
+while task.wait(1) do
+	
+	local timeNow = os.time()
+
+	if timeNow >= timeToResetDailyRewards.Value then
+		addTimeToQuests:FireServer("Daily")
+		task.wait(0.1)
+		while timeNow >= timeToResetDailyRewards.Value do
+			addTimeToQuests:FireServer("Daily")
+			task.wait(0.01)
+		end
+	else	
+		local formatted_time = formatTime(timeToResetDailyRewards.Value - timeNow)
+		script.Parent.DailyQuestTimer.Text = "Resets In: " .. formatted_time
+	end
+	
+	if timeNow >= timeToResetWeeklyRewards.Value then
+		addTimeToQuests:FireServer("Weekly")
+		task.wait(0.1)
+		while timeNow >= timeToResetWeeklyRewards.Value do
+			addTimeToQuests:FireServer("Weekly")
+			task.wait(0.1)
+		end
+	else	
+		local formatted_time = formatTime(timeToResetWeeklyRewards.Value - timeNow)
+		script.Parent.WeeklyQuestTimer.Text = "Resets In: " .. formatted_time
+	end
+end

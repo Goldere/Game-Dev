@@ -1,0 +1,194 @@
+local p = game.Players.LocalPlayer
+local char = p.Character or p.CharacterAdded:wait()
+
+-- Services
+local RS = game:GetService("ReplicatedStorage")
+local debris = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
+
+-- Events
+local KnockpackEvent = RS.Events.BallKnockpack
+local GoKartTouched = RS.Events.GoKartTouched
+local AddPointsEvent = RS.Events.AddGamePoint
+local remote = RS.Events.BallSpawned
+local breakTile = RS.Events.BreakTile
+local BossHittedEvent = RS.Events.BossGotHit
+
+-- Other Variables
+local RsBowlingBall = RS.BowlingBall
+local switchBombCarrier = RS.Events.SwitchBombCarrier
+local gui = p:WaitForChild("PlayerGui"):WaitForChild("MainGui")
+local hitmarkerSoundEffect = gui.Sounds.hitSoundEffect
+local ball_stun_duration = p:WaitForChild("PlayerStats").ball_stun_duration
+
+--UI Variables
+local EnemyHitNotification = gui.EnemyHitNotification
+local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false)
+local goal = {Position = UDim2.new(0.407, 0,0.756, 0)}
+local enemyHitTween = TweenService:Create(EnemyHitNotification, tweenInfo, goal)
+EnemyHitNotification.Position = UDim2.new(0.55, 0,0.756, 0) 
+
+
+remote.OnClientEvent:connect(function(plr,orient,tool, mouse, damage, size, speed, hugeballl, knockpack,
+	goldenBall, destroyGoldenBall, spawnPosition, attackCharged, team)
+	local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+	local character = plr.Character
+	local targetPos = mouse
+	local lookAt = (targetPos - character.Head.Position).unit
+
+	if hugeballl == true then
+		size = 4
+		speed = 200
+		if RS.InstaKillMode.Value == true then
+			damage = 10000
+		else
+			damage = 75
+		end
+	end
+	
+	
+	-- Create ball
+	local ball = Instance.new("Part") 
+	ball.Parent = game.Workspace
+	--[[
+	if plr.Name ~= p.Name then
+		speed += 10
+	end
+	]]--
+	
+	-- Define its color and damage if necessary
+	if goldenBall ~= nil then 
+		ball.Material = "Neon"
+		ball.BrickColor = BrickColor.new(36)
+		if RS.InstaKillMode.Value == true then
+			damage = 10000
+		end
+	else
+		if RS.InstaKillMode.Value == true then
+			ball.BrickColor = BrickColor.new("Tr. Red")
+			ball.Material = Enum.Material.Neon
+		else
+			if team == p.Teamm.Value and team ~= "Solo" then
+				ball.BrickColor = RsBowlingBall.BrickColor
+				ball.Material = RsBowlingBall.Material
+			elseif plr.Name ~= p.Name then
+				ball.BrickColor = BrickColor.new("Tr. Red")
+				ball.Material = RS.BowlingBall.Material
+			else
+				ball.BrickColor = RsBowlingBall.BrickColor
+				ball.Material = RsBowlingBall.Material
+			end
+		end
+	end
+	
+	-- Check for charged throw
+	if attackCharged == true then
+		local chargedEffect = RS.ChargedBallEffect:Clone()
+		chargedEffect.Parent = ball
+	end
+	
+	-- Define spawn position
+	local spawnPos = spawnPosition
+	spawnPos  = spawnPos + (lookAt * 2)
+	
+	-- Add sound
+	local sound1 = RS.BowlingBall.Sound:Clone()
+	local sound2 = RS.BowlingBall.Sound2:Clone()
+	local soundPlayed = RS.BowlingBall.SoundPlayed:Clone()
+	soundPlayed.Parent = ball
+	sound1.Parent = ball
+	sound2.Parent = ball
+	
+	-- Define rest of the properties
+	ball.CollisionGroup = "BowlingBalls"
+	ball.Position = spawnPos
+	ball.Size = Vector3.new(1.9 * size, 1.9 * size, 1.9 * size)
+	ball.Velocity = lookAt * speed
+	ball.Shape = 0
+	ball.Name = "BallProjectile"
+
+	if RS.GameMode.Value == "Tile Smasher" then
+		ball.CanCollide = false
+	else
+		ball.CanCollide = true
+	end
+
+	debris:AddItem(ball, 6)
+	
+	local debounce = false
+	
+	ball.Touched:Connect(function(hit)
+		if string.match(hit.Name, "TileSmasher") then
+			ball.CanTouch = false
+			breakTile:FireServer(hit.Name)
+		end
+		
+		local humanoid = hit.Parent:FindFirstChild("Humanoid")
+		if hit.Name == "BallProjectile" then
+			debris:AddItem(ball, 0.5)
+		end
+		
+		if hit.Name == "BossHitBox" and plr.Name == p.Name and not debounce then
+			debounce = true
+			ball:Destroy()
+			BossHittedEvent:FireServer()
+			task.wait(1)
+			debounce = false
+			return
+		end
+		
+		if hit.Name == "BallHoles" and plr.Name == p.Name and not debounce then
+			debounce = true
+			debris:AddItem(ball, 1)
+			AddPointsEvent:FireServer()
+			task.wait(0.8)
+			debounce = false
+			return
+		end
+		
+		if humanoid and plr.Name ~= humanoid.Parent.Name then
+			local Char = hit.Parent
+			
+			local hitPlayer = game.Players:GetPlayerFromCharacter(hit.Parent)
+			
+			debris:AddItem(ball, 0.5)
+
+			if hitPlayer.Teamm.Value == p.Teamm.Value and team ~= "Solo" or hitPlayer.Teamm.Value == "Bomb Player" then 
+				return		
+			elseif hit.Parent.Name ~= plr.Name and plr.Name == p.Name then
+				if soundPlayed.Value == false then
+					humanoid.Parent.Torso.PlayerHitMarker.hitmarker.Visible = true
+					if p.Others.CarryingBomb.Value then
+						switchBombCarrier:FireServer(humanoid.Parent)
+					else
+						KnockpackEvent:FireServer(humanoid.Parent, damage, knockpack, ball_stun_duration.Value)
+					end
+
+					soundPlayed.Value = true
+					local random_number = math.random(1,2)
+					local sound = (random_number == 1 and sound1) or sound2
+					sound:Play()
+					hitmarkerSoundEffect:Play()
+					EnemyHitNotification.Visible = true
+					enemyHitTween:Play()
+					EnemyHitNotification.Position = UDim2.new(0.55, 0,0.756, 0) 
+					wait(0.2)
+					humanoid.Parent.Torso.PlayerHitMarker.hitmarker.Visible = false
+					wait(0.8)			
+					soundPlayed.Value = false
+					wait(0.5)
+					EnemyHitNotification.Visible = false
+				end
+			end		
+		end	
+		
+		-- Check for when ball touched gokart
+		if string.match(hit.Parent.Name, "Gokart") and not debounce and plr.Name == p.Name
+			and hit.Parent:FindFirstChild("PlayerSitting").Value ~= p.Name then
+			debounce = true
+			GoKartTouched:FireServer(hit.Parent.Name)
+			task.wait(2)
+			debounce = false
+		end
+	end)
+end)
